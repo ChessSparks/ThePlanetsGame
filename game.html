@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Planets — Verdant</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; user-select: none; -webkit-user-select: none; background: #060714; font-family: 'Segoe UI', system-ui, sans-serif; color: #e8f6ff; }
+    canvas { display: block; }
+    .hidden { display: none !important; }
+
+    .overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: radial-gradient(circle at 50% 40%, #12224a, #05060f 70%); z-index: 20; text-align: center; }
+    .overlay h1 { margin: 0; font-size: 56px; letter-spacing: 0.3em; font-weight: 300; }
+    .overlay p { margin: 0; opacity: 0.8; }
+    .bar { width: 320px; height: 4px; background: #ffffff22; border-radius: 2px; overflow: hidden; }
+    #loadbar { height: 100%; width: 0; background: var(--planet, #4fd8ff); box-shadow: 0 0 10px var(--planet, #4fd8ff); transition: width 0.2s; }
+    #start { cursor: pointer; background: #05060fcc; }
+    #start .btn { margin-top: 12px; padding: 12px 36px; border: 1px solid var(--planet, #4fd8ff); border-radius: 30px; letter-spacing: 0.2em; }
+    #start:hover .btn { background: color-mix(in srgb, var(--planet, #4fd8ff) 18%, transparent); }
+
+    /* planet loading screen (src/loading.js) */
+    #loading { background: radial-gradient(ellipse at 30% 50%, color-mix(in srgb, var(--planet, #12224a) 22%, #05060f), #03040b 72%); transition: opacity 0.6s ease; }
+    #loading.fadeout { opacity: 0; pointer-events: none; }
+    #loadStars { position: absolute; inset: 0; }
+    .loadWrap { position: relative; display: flex; align-items: center; gap: clamp(16px, 5vw, 72px); padding: 0 24px; text-align: left; max-width: 1100px; }
+    #loadPlanet { width: clamp(180px, 38vh, 420px); height: auto; aspect-ratio: 1; flex: none; filter: drop-shadow(0 0 30px color-mix(in srgb, var(--planetGlow, #4fd8ff) 35%, transparent)); }
+    .loadInfo { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+    #loadNum { font-size: 13px; letter-spacing: 0.45em; color: var(--planetGlow, #4fd8ff); }
+    #loading h1 { font-size: clamp(34px, 7vh, 72px); letter-spacing: 0.22em; text-shadow: 0 0 24px color-mix(in srgb, var(--planet, #4fd8ff) 60%, transparent); }
+    #loadSub { font-size: 16px; opacity: 0.85; }
+    #loading .bar { width: min(360px, 70vw); margin-top: 10px; }
+    #loadtext { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.6 !important; }
+    #loadTip { max-width: 420px; font-size: 14px; line-height: 1.45; color: #cfe0f0; opacity: 0 !important; transition: opacity 0.35s; min-height: 2.9em; }
+    #loadTip.show { opacity: 0.85 !important; }
+    @media (max-aspect-ratio: 1/1) { .loadWrap { flex-direction: column; text-align: center; } .loadInfo { align-items: center; } }
+
+    #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+    #objective { position: absolute; top: 18px; left: 20px; max-width: 420px; }
+    #objective .label { font-size: 11px; letter-spacing: 0.25em; color: #4fd8ff; }
+    #objText { font-size: 16px; text-shadow: 0 1px 4px #000a; }
+    #pips { position: absolute; top: 20px; right: 22px; display: flex; gap: 8px; }
+    .pip { width: 18px; height: 26px; border: 2px solid #4fd8ff88; border-radius: 4px; transition: all 0.3s; }
+    .pip.on { background: #4fd8ff; box-shadow: 0 0 12px #4fd8ff; border-color: #4fd8ff; }
+    #zoneToast { position: absolute; top: 18%; width: 100%; text-align: center; font-size: 34px; letter-spacing: 0.35em; font-weight: 300; opacity: 0; text-shadow: 0 2px 10px #000c; }
+    #zoneToast.show { animation: toast 2.8s ease forwards; }
+    @keyframes toast { 0% { opacity: 0; transform: translateY(8px); } 15%, 75% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+    #prompt { position: absolute; bottom: 22%; width: 100%; text-align: center; font-size: 18px; opacity: 0; transition: opacity 0.3s; }
+    #prompt.show { opacity: 1; }
+    #prompt b { border: 1px solid #fff; border-radius: 4px; padding: 2px 8px; margin-right: 6px; }
+    #controlsHint { position: absolute; bottom: 18px; right: 20px; font-size: 12px; letter-spacing: 0.12em; opacity: 0.6; text-shadow: 0 1px 3px #000; }
+    #controlsHint b { border: 1px solid #e8f6ff88; border-radius: 4px; padding: 1px 6px; margin-right: 4px; }
+    #controlsScreen { background: #05060fe0; z-index: 31; }
+    #controlsScreen h1 { font-size: 36px; letter-spacing: 0.3em; }
+    .ctl-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 300px)); gap: 6px 40px; text-align: left; margin-top: 8px; }
+    .ctl-grid h3 { grid-column: 1 / -1; margin: 14px 0 2px; font-size: 12px; letter-spacing: 0.3em; color: #4fd8ff; font-weight: 600; }
+    .ctl { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; border-bottom: 1px solid #ffffff14; font-size: 16px; }
+    .ctl kbd { font: inherit; font-size: 13px; padding: 2px 9px; border: 1px solid #4fd8ff88; border-radius: 5px; background: #4fd8ff18; white-space: nowrap; }
+    @media (max-width: 700px) { .ctl-grid { grid-template-columns: 1fr; } }
+
+    /* Nova (ship AI) bubble */
+    #nova { position: fixed; left: 20px; bottom: 20px; display: flex; align-items: flex-end; gap: 12px; z-index: 6; max-width: min(560px, calc(50vw - 130px));
+      opacity: 0; transform: translateY(20px); transition: opacity 0.35s, transform 0.35s; pointer-events: none; }
+    #nova.visible { opacity: 1; transform: none; }
+    #nova .portrait { flex: none; width: 84px; height: 84px; border-radius: 50%; overflow: hidden; border: 2px solid var(--nova, #4fd8ff); box-shadow: 0 0 18px #4fd8ff88; background: #000; }
+    #nova .portrait canvas { width: 100%; height: 100%; display: block; }
+    #nova.talking .portrait { animation: talk 0.5s ease-in-out infinite alternate; }
+    @keyframes talk { to { box-shadow: 0 0 30px #4fd8ffdd; } }
+    #nova .bubble { position: relative; background: #0b1a33e6; border: 1px solid #4fd8ff88; border-radius: 16px; padding: 10px 16px 12px; margin-bottom: 24px; backdrop-filter: blur(4px); }
+    #nova .bubble::before { content: ''; position: absolute; left: -9px; bottom: 14px; border: 8px solid transparent; border-right-color: #4fd8ff88; border-left: 0; }
+    #nova .name { font-size: 11px; letter-spacing: 0.25em; color: var(--nova, #4fd8ff); margin-bottom: 2px; }
+    #nova .text { font-size: 16px; line-height: 1.4; min-height: 1.4em; }
+
+    #labels { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.4s; z-index: 4; }
+    #labels.show { opacity: 1; }
+    .maplabel { position: absolute; left: 0; top: 0; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; background: #05060fb0; padding: 3px 8px; border-radius: 4px; white-space: nowrap; }
+    .maplabel.you { color: #ffd34f; background: none; text-shadow: 0 1px 4px #000; }
+    .maplabel.goal { color: #7fe0ff; border: 1px solid #7fe0ff88; box-shadow: 0 0 12px #4fd8ff66; margin-top: -30px; }
+    #tutorial { position: absolute; left: 50%; bottom: 30%; transform: translate(-50%, 12px); display: flex; align-items: center; gap: 12px;
+      padding: 10px 18px; border-radius: 12px; background: #05101cc8; border: 1px solid #4fd8ff55; box-shadow: 0 0 24px #4fd8ff22;
+      font-size: 17px; letter-spacing: 0.04em; opacity: 0; pointer-events: none; transition: opacity 0.35s, transform 0.35s; z-index: 3; }
+    #tutorial.show { opacity: 1; transform: translate(-50%, 0); }
+    #tutorial.hold { opacity: 0 !important; }
+    #tutorial .keys { display: flex; gap: 5px; }
+    #tutorial kbd { min-width: 30px; padding: 4px 9px; text-align: center; border: 1px solid #e8f6ffaa; border-bottom-width: 3px; border-radius: 6px;
+      font: 600 14px system-ui, sans-serif; background: #ffffff10; }
+    #tutorial .tick { color: #6dff9e; font-size: 20px; width: 0; overflow: hidden; transition: width 0.25s; }
+    #tutorial.done .tick { width: 22px; }
+    #tutorial.done { border-color: #6dff9e88; }
+
+    #complete h1 { font-size: 44px; }
+    .menu-btns { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; justify-content: center; }
+    .menu-btns button, .menu-btns a { all: unset; cursor: pointer; padding: 11px 26px; border: 1px solid #4fd8ff66; border-radius: 30px; letter-spacing: 0.18em; font-size: 14px; text-transform: uppercase; color: #e8f6ff; }
+    .menu-btns .go { background: #4fd8ff26; border-color: #4fd8ff; }
+    .menu-btns button:hover, .menu-btns a:hover { background: #4fd8ff38; }
+    #newBest { color: #7dffa8; letter-spacing: 0.2em; font-size: 14px; }
+    #pause { background: #05060fcc; z-index: 30; }
+    #pause h1 { font-size: 40px; }
+    .backlink { position: absolute; top: 20px; left: 24px; color: #9fb2c8; text-decoration: none; letter-spacing: 0.15em; font-size: 13px; text-transform: uppercase; }
+    .backlink:hover { color: #e8f6ff; }
+
+    #crosshair { position: fixed; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; pointer-events: none; z-index: 5; display: none; }
+    #crosshair.show { display: block; }
+    #crosshair.hidden { display: none !important; }
+    #crosshair.locked::before, #crosshair.locked::after { background: #ff5a6e; }
+    #crosshair.locked { transform: scale(1.25); }
+    #crosshair { transition: transform 0.12s; }
+    #crosshair.hit { animation: hitmark 0.25s ease-out; }
+    @keyframes hitmark { 0% { transform: scale(1.8) rotate(45deg); } 100% { transform: scale(1.25) rotate(0deg); } }
+    #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #7ef; box-shadow: 0 0 4px #000; }
+    #crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; }
+    #crosshair::after { top: 10px; left: 0; height: 2px; width: 22px; }
+    /* health, boss, hurt flash (planet 3) */
+    #health { position: absolute; top: 58px; right: 22px; width: 180px; }
+    #health .label, #bossbar .label { font-size: 11px; letter-spacing: 0.25em; color: #7dffa8; margin-bottom: 4px; text-align: right; }
+    #health .track, #bossbar .track { height: 8px; background: #ffffff22; border-radius: 4px; overflow: hidden; }
+    #healthFill { height: 100%; width: 100%; background: linear-gradient(90deg, #39d97a, #8dffb8); transition: width 0.25s; }
+    #health.low #healthFill { background: linear-gradient(90deg, #ff4a4a, #ff9a6a); }
+    #bossbar { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); width: min(420px, 60vw); }
+    #bossbar .label { color: #d79bff; text-align: center; }
+    #bossFill { height: 100%; width: 100%; background: linear-gradient(90deg, #8a2be2, #d06bff); transition: width 0.2s; }
+    #warmth { position: absolute; top: 58px; right: 22px; width: 180px; }
+    #warmth .label { font-size: 11px; letter-spacing: 0.25em; color: #9fe6ff; margin-bottom: 4px; text-align: right; }
+    #warmth .track { height: 8px; background: #ffffff22; border-radius: 4px; overflow: hidden; }
+    #warmthFill { height: 100%; width: 100%; background: linear-gradient(90deg, #ff9a3d, #ffd27a); transition: width 0.2s; }
+    #warmth.low #warmthFill { background: linear-gradient(90deg, #5ab8ff, #c8ecff); }
+    #warmth.low .label { color: #5ab8ff; animation: blink 0.8s infinite alternate; }
+    @keyframes blink { to { opacity: 0.4; } }
+    #frostOverlay { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0;
+      background: radial-gradient(ellipse at center, transparent 45%, rgba(200,235,255,0.55) 80%, rgba(235,248,255,0.9) 100%);
+      box-shadow: inset 0 0 120px rgba(220,245,255,0.8); }
+    #avalancheWarn { position: absolute; top: 26%; width: 100%; text-align: center; font-size: 46px; letter-spacing: 0.4em; font-weight: 700; color: #fff; opacity: 0; text-shadow: 0 0 20px #5ab8ff, 0 2px 8px #000; }
+    #avalancheWarn.show { animation: avwarn 3.2s ease forwards; }
+    @keyframes avwarn { 0%, 100% { opacity: 0; } 10%, 70% { opacity: 1; } }
+    #hotbar { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
+    #hotbar .slot { position: relative; width: 66px; height: 66px; border-radius: 10px; background: #0b1a33cc; border: 1px solid #4fd8ff44; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; transition: all 0.15s; }
+    #hotbar .slot.on { border-color: #4fd8ff; background: #10305acc; box-shadow: 0 0 14px #4fd8ff66; transform: translateY(-3px); }
+    #hotbar .k { position: absolute; top: 3px; left: 6px; font-size: 11px; color: #9fb2c8; }
+    #hotbar .ic { font-size: 22px; line-height: 1; color: #e8f6ff; }
+    #hotbar .ic svg { width: 28px; height: 28px; display: block; }
+    #hotbar .n { font-size: 10px; letter-spacing: 0.12em; color: #9fb2c8; text-transform: uppercase; }
+    #hurt { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0; background: radial-gradient(circle, transparent 55%, #ff1a1a88 100%); }
+    #hurt.hit { animation: hurt 0.45s ease-out; }
+    @keyframes hurt { from { opacity: 1; } to { opacity: 0; } }
+
+    /* 15-puzzle terminal */
+    #puzzle15 { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: #02060fd9; backdrop-filter: blur(3px); }
+    .p15-panel { padding: 22px 26px; border: 1px solid #4fd8ff66; border-radius: 14px; background: #0b1a33ee; box-shadow: 0 0 40px #4fd8ff33; text-align: center; max-width: 94vw; }
+    .p15-title { font-size: 22px; letter-spacing: 0.3em; color: #4fd8ff; }
+    .p15-sub { margin: 6px 0 16px; color: #b8c8dc; font-size: 15px; max-width: 420px; }
+    .p15-grid { display: grid; grid-template-columns: repeat(4, min(76px, 18vw)); gap: 8px; justify-content: center; }
+    .p15-tile { all: unset; cursor: pointer; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: min(28px, 7vw); font-weight: 600;
+      border-radius: 10px; background: linear-gradient(160deg, #1d3d66, #10243f); border: 1px solid #4fd8ff55; color: #e8f6ff; transition: transform 0.08s, background 0.2s; }
+    .p15-tile:hover { transform: scale(1.04); border-color: #4fd8ff; }
+    .p15-tile.home { border-color: #7dffa8aa; color: #c8ffd8; }
+    .p15-tile.empty { background: transparent; border: 1px dashed #4fd8ff33; cursor: default; }
+    #puzzle15.solved .p15-tile:not(.empty) { background: linear-gradient(160deg, #1f6a44, #124a2c); border-color: #7dffa8; box-shadow: 0 0 14px #7dffa8aa; }
+    .p15-foot { display: flex; justify-content: space-between; gap: 18px; margin-top: 14px; font-size: 13px; color: #9fb2c8; flex-wrap: wrap; }
+    .p15-foot b { color: #4fd8ff; font-weight: 600; }
+
+    /* cutscene letterbox */
+    .bar-cine { position: fixed; left: 0; right: 0; height: 0; background: #000; z-index: 5; transition: height 0.6s ease; pointer-events: none; }
+    #cineTop { top: 0; }
+    #cineBottom { bottom: 0; }
+    body.cinematic .bar-cine { height: 12vh; }
+    body.cinematic #hud { opacity: 0; }
+    #hud { transition: opacity 0.4s; }
+    #cineSkip { position: fixed; right: 22px; bottom: 3.5vh; z-index: 6; font-size: 13px; letter-spacing: 0.15em; opacity: 0; transition: opacity 0.6s; pointer-events: none; color: #ccd; }
+    body.cinematic #cineSkip { opacity: 0.7; }
+    #cineSkip b { border: 1px solid #ccd; border-radius: 4px; padding: 1px 6px; margin-right: 6px; }
+    #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 15; transition: opacity 0.1s; }
+  </style>
+  <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/build/three.module.js",
+        "three/addons/": "./vendor/three/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="loading" class="overlay">
+    <canvas id="loadStars"></canvas>
+    <div class="loadWrap">
+      <canvas id="loadPlanet" width="420" height="420"></canvas>
+      <div class="loadInfo">
+        <div id="loadNum"></div>
+        <h1 class="levelName">PLANETS</h1>
+        <p id="loadSub"></p>
+        <div class="bar"><div id="loadbar"></div></div>
+        <p id="loadtext">Loading models…</p>
+        <p id="loadTip"></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="start" class="overlay hidden">
+    <a class="backlink" href="index.html" onclick="event.stopPropagation()">← Main menu</a>
+    <h1 class="levelName"></h1>
+    <p id="subtitle"></p>
+    <div class="btn">CLICK TO BEGIN</div>
+  </div>
+
+  <div id="hud" class="hidden">
+    <div id="objective"><div class="label">OBJECTIVE</div><div id="objText"></div></div>
+    <div id="pips"></div>
+    <div id="health" class="hidden"><div class="label">HEALTH</div><div class="track"><div id="healthFill"></div></div></div>
+    <div id="bossbar" class="hidden"><div class="label" id="bossName"></div><div class="track"><div id="bossFill"></div></div></div>
+    <div id="zoneToast"></div>
+    <div id="hotbar" class="hidden"></div>
+    <div id="warmth" class="hidden"><div class="label">WARMTH</div><div class="track"><div id="warmthFill"></div></div></div>
+    <div id="avalancheWarn">RUN!</div>
+    <div id="prompt"><b>E</b> <span id="promptText"></span></div>
+    <div id="controlsHint"><b>M</b>map &nbsp; <b>C</b>controls</div>
+    <div id="tutorial"><div class="keys"></div><div class="text"></div><div class="tick">✓</div></div>
+  </div>
+
+  <div id="nova">
+    <div class="portrait"><canvas width="96" height="96" aria-label="Nova, the ship AI"></canvas></div>
+    <div class="bubble"><div class="name">NOVA</div><div class="text"></div></div>
+  </div>
+
+  <div id="labels"></div>
+  <div id="crosshair"></div>
+  <div id="cineTop" class="bar-cine"></div>
+  <div id="cineBottom" class="bar-cine"></div>
+  <div id="cineSkip"><b>SPACE</b> skip</div>
+  <div id="fade"></div>
+  <div id="hurt"></div>
+  <div id="frostOverlay"></div>
+
+  <div id="complete" class="overlay hidden">
+    <h1 id="completeTitle"></h1>
+    <p id="stats"></p>
+    <p id="newBest" class="hidden">★ NEW BEST TIME ★</p>
+    <p id="nextText"></p>
+    <div class="menu-btns">
+      <button id="btnNext" class="go">Next planet</button>
+      <button id="btnReplay">Play again</button>
+      <a href="index.html">Main menu</a>
+    </div>
+  </div>
+
+  <div id="controlsScreen" class="overlay hidden">
+    <h1>CONTROLS</h1>
+    <p style="opacity:.7">The mission is paused</p>
+    <div class="ctl-grid">
+      <h3>MOVEMENT</h3>
+      <div class="ctl"><span>Move</span><kbd>W A S D</kbd></div>
+      <div class="ctl"><span>Look around</span><kbd>Mouse</kbd></div>
+      <div class="ctl"><span>Jump</span><kbd>Space</kbd></div>
+      <div class="ctl"><span>Walk slowly</span><kbd>Shift</kbd></div>
+      <div class="ctl"><span>Dodge roll</span><kbd>Q</kbd></div>
+      <div class="ctl"><span>Camera zoom</span><kbd>Wheel</kbd></div>
+      <h3>ACTIONS</h3>
+      <div class="ctl"><span>Interact / pick up / talk</span><kbd>E</kbd></div>
+      <div class="ctl"><span>Shoot</span><kbd>Left click</kbd></div>
+      <div class="ctl"><span>Empty hands / blaster</span><kbd>1 / 2</kbd></div>
+      <div class="ctl"><span>Put the weapon away</span><kbd>H</kbd></div>
+      <h3>GAME</h3>
+      <div class="ctl"><span>Planet map</span><kbd>M</kbd></div>
+      <div class="ctl"><span>Skip dialogue</span><kbd>Enter</kbd></div>
+      <div class="ctl"><span>Skip cutscene</span><kbd>Space</kbd></div>
+      <div class="ctl"><span>Pause</span><kbd>Esc / P</kbd></div>
+      <div class="ctl"><span>This screen</span><kbd>C</kbd></div>
+      <div class="ctl" style="opacity:.5"><span>Teleport to zones (testing)</span><kbd>Shift + 1–6</kbd></div>
+    </div>
+    <div class="menu-btns"><button id="btnControlsBack" class="go">Back to the mission</button></div>
+  </div>
+
+  <div id="pause" class="overlay hidden">
+    <h1>PAUSED</h1>
+    <p id="pauseInfo"></p>
+    <div class="menu-btns">
+      <button id="btnResume" class="go">Resume</button>
+      <button id="btnControls">Controls</button>
+      <button id="btnRestart">Restart planet</button>
+      <a href="index.html">Main menu</a>
+    </div>
+  </div>
+
+  <script type="module" async src="src/loading.js"></script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

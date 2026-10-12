@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Planets Game</title>
+  <link href="vendor/fonts/rajdhani.css" rel="stylesheet" />
+  <style>
+    :root { --accent: #4fd8ff; --text: #e8f6ff; --muted: #9fb2c8; --glass: rgba(10, 16, 40, 0.62); --line: rgba(79, 216, 255, 0.28); }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; user-select: none; -webkit-user-select: none; background: #050616; color: var(--text); font-family: 'Rajdhani', 'Segoe UI', system-ui, sans-serif; }
+    .hidden { display: none !important; }
+    #scene { position: fixed; inset: 0; opacity: 0; transition: opacity 1.4s ease; }
+    body.loaded #scene { opacity: 1; }
+    #scene canvas { display: block; }
+    #vignette { position: fixed; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(5,6,22,0.92) 0%, rgba(5,6,22,0.55) 32%, rgba(5,6,22,0) 55%); }
+    #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.6s; z-index: 50; }
+    body.leaving #fade { opacity: 1; }
+
+    /* left column */
+    /* everything scales with the screen height (clamped), so the menu fits from phones to ultrawide monitors */
+    #ui { position: fixed; left: 0; top: 0; bottom: 0; width: min(clamp(300px, 46vh, 640px), 100vw); padding: clamp(14px, 7vh, 90px) 0 clamp(10px, 4vh, 56px) clamp(16px, 6vw, 140px); display: flex; flex-direction: column; z-index: 5; }
+    #logo { width: min(clamp(150px, 36vh, 560px), 80vw); filter: drop-shadow(0 0 18px rgba(79, 216, 255, 0.35)); opacity: 0; transform: translateY(-10px); animation: in 1s 0.2s ease forwards; }
+    #tagline { white-space: nowrap; margin: 6px 0 0 4px; color: var(--muted); letter-spacing: 0.32em; font-size: clamp(10px, 1.25vh, 17px); text-transform: uppercase; opacity: 0; animation: in 1s 0.5s ease forwards; }
+    @keyframes in { to { opacity: 1; transform: none; } }
+
+    /* studio intro (src/intro.js): the menu waits underneath, its entrance animations paused */
+    #studioIntro { position: fixed; inset: 0; z-index: 100; background: #030308; transition: opacity 0.7s ease; }
+    #studioIntro.out { opacity: 0; pointer-events: none; }
+    #studioIntro canvas { display: block; }
+    #studioIntro .skip { position: absolute; right: 22px; bottom: 18px; font-size: 13px; letter-spacing: 0.2em; text-transform: uppercase; color: #ffd9b066;
+      opacity: 0; animation: in 1s 1.5s ease forwards; }
+    body.intro #ui, body.intro #ui * { animation-play-state: paused !important; }
+
+    nav { margin-top: clamp(8px, 5.5vh, 80px); display: flex; flex-direction: column; gap: clamp(2px, 1vh, 14px); width: min(clamp(250px, 32vh, 460px), 85vw); }
+    nav button { all: unset; cursor: pointer; display: flex; flex-direction: column; padding: clamp(5px, 1.3vh, 18px) 22px; border-left: 2px solid transparent; letter-spacing: 0.2em; text-transform: uppercase; font-size: clamp(14px, 2.2vh, 30px); font-weight: 600; color: var(--text);
+      background: linear-gradient(90deg, rgba(79,216,255,0.0), rgba(79,216,255,0)); transition: all 0.25s; opacity: 0; transform: translateX(-12px); animation: in 0.6s ease forwards; }
+    nav button:nth-child(1) { animation-delay: 0.7s; } nav button:nth-child(2) { animation-delay: 0.8s; } nav button:nth-child(3) { animation-delay: 0.9s; }
+    nav button:nth-child(4) { animation-delay: 1.0s; } nav button:nth-child(5) { animation-delay: 1.1s; }
+    nav button:hover, nav button:focus-visible { border-left-color: var(--accent); background: linear-gradient(90deg, rgba(79,216,255,0.16), rgba(79,216,255,0)); padding-left: 30px; }
+    nav button.primary { border-left-color: var(--accent); background: linear-gradient(90deg, rgba(79,216,255,0.22), rgba(79,216,255,0)); font-size: clamp(16px, 2.7vh, 36px); }
+    nav button .s { font-size: clamp(10px, 1.3vh, 17px); letter-spacing: 0.18em; color: var(--accent); font-weight: 500; margin-top: 2px; }
+
+    #progress { margin-top: auto; padding-top: 10px; width: min(clamp(250px, 32vh, 460px), 85vw); opacity: 0; animation: in 1s 1.3s ease forwards; }
+    #progressBar { display: flex; gap: 6px; margin-bottom: 8px; }
+    #progressBar span { flex: 1; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.12); }
+    #progressBar span.open { background: color-mix(in srgb, var(--c) 35%, transparent); }
+    #progressBar span.done { background: var(--c); box-shadow: 0 0 10px var(--c); }
+    #progressText { font-size: clamp(11px, 1.35vh, 18px); color: var(--muted); letter-spacing: 0.08em; }
+    #hint { margin-top: clamp(4px, 1vh, 12px); font-size: clamp(11px, 1.25vh, 16px); color: #6f86a0; letter-spacing: 0.05em; }
+
+    /* panels (missions, settings, credits, confirm) */
+    .panel { position: fixed; top: 50%; right: 5vw; transform: translate(30px, -50%); width: min(520px, 90vw); max-height: 84vh; overflow: auto; padding: 26px 28px;
+      background: var(--glass); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(12px); z-index: 10; opacity: 0; pointer-events: none; transition: all 0.3s ease; }
+    .panel.open { opacity: 1; pointer-events: auto; transform: translate(0, -50%); }
+    .panel h2 { margin: 0 0 18px; font-size: 24px; letter-spacing: 0.3em; font-weight: 600; text-transform: uppercase; }
+    .close { all: unset; cursor: pointer; position: absolute; top: 18px; right: 20px; font-size: 22px; color: var(--muted); }
+    .close:hover { color: var(--text); }
+    /* tall screens (phones, tablets upright): menu on top, planet below it */
+    @media (max-aspect-ratio: 1/1) {
+      #tagline { white-space: normal; }
+      #vignette { background: linear-gradient(180deg, rgba(5,6,22,0.92) 0%, rgba(5,6,22,0.55) 40%, rgba(5,6,22,0) 62%, rgba(5,6,22,0.7) 100%); }
+      #ui { padding: 5vh 16px 3vh; width: 100vw; align-items: center; text-align: center; }
+      #tagline { margin-left: 0; }
+      nav { width: min(clamp(250px, 32vh, 460px), 88vw); }
+      nav button { align-items: center; border-left: 0; border-bottom: 2px solid transparent; }
+      nav button:hover, nav button:focus-visible { padding-left: 22px; border-bottom-color: var(--accent); background: rgba(79,216,255,0.12); }
+      nav button.primary { border-bottom-color: var(--accent); background: rgba(79,216,255,0.18); }
+      #progress { width: min(clamp(250px, 32vh, 460px), 88vw); }
+    }
+    @media (max-width: 820px), (max-aspect-ratio: 1/1) { .panel { right: 50%; transform: translate(50%, -46%); } .panel.open { transform: translate(50%, -50%); } }
+    /* short screens (phones sideways, small laptop windows): compact menu */
+    @media (max-height: 560px) {
+      #tagline, #hint { display: none; }
+      #logo { width: min(clamp(120px, 30vh, 200px), 40vw); }
+      nav { margin-top: 6px; gap: 0; }
+      nav button { padding: 4px 18px; font-size: 14px; }
+      nav button.primary { font-size: 15px; }
+      nav button .s { font-size: 10px; }
+      #progress { padding-top: 6px; }
+      .panel { max-height: 92vh; padding: 16px 18px; }
+      .panel h2 { margin-bottom: 10px; font-size: 18px; }
+      .mission { padding: 8px 12px; margin-bottom: 6px; }
+      .orb { width: 38px; height: 38px; }
+      .name { font-size: 18px; }
+    }
+
+    .mission { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 16px; width: 100%; padding: 14px 16px; margin-bottom: 10px; border-radius: 10px;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); transition: all 0.2s; }
+    .mission:hover { background: color-mix(in srgb, var(--c) 16%, transparent); border-color: var(--c); }
+    .mission.locked { cursor: not-allowed; opacity: 0.45; filter: grayscale(0.7); }
+    .orb { flex: none; width: 54px; height: 54px; border-radius: 50%; background: radial-gradient(circle at 32% 30%, var(--g), var(--c) 55%, #0a0a18 100%); box-shadow: 0 0 18px color-mix(in srgb, var(--c) 60%, transparent); }
+    .info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+    .num { font-size: 12px; letter-spacing: 0.25em; color: var(--muted); text-transform: uppercase; }
+    .name { font-size: 24px; font-weight: 700; letter-spacing: 0.12em; }
+    .sub { font-size: 14px; color: var(--muted); }
+    .status { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 13px; white-space: nowrap; }
+    .badge { padding: 3px 9px; border-radius: 20px; letter-spacing: 0.08em; font-weight: 600; }
+    .badge.done { background: rgba(125, 255, 168, 0.15); color: #7dffa8; }
+    .badge.open { background: rgba(79, 216, 255, 0.15); color: var(--accent); }
+    .badge.locked { background: rgba(255,255,255,0.08); color: var(--muted); }
+    .best { color: var(--muted); }
+
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 17px; }
+    .row label { letter-spacing: 0.06em; }
+    input[type=range] { width: 180px; accent-color: var(--accent); }
+    input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); }
+    .seg { display: flex; gap: 6px; }
+    .seg label { cursor: pointer; padding: 6px 14px; border: 1px solid var(--line); border-radius: 6px; font-size: 15px; }
+    .seg input { display: none; }
+    .seg input:checked + span { color: var(--accent); }
+    .seg label:has(input:checked) { background: rgba(79, 216, 255, 0.15); border-color: var(--accent); }
+    .note { font-size: 13px; color: var(--muted); margin-top: 10px; }
+    .danger { all: unset; cursor: pointer; margin-top: 18px; padding: 9px 16px; border: 1px solid #ff6a6a66; border-radius: 6px; color: #ff9a9a; letter-spacing: 0.12em; font-size: 14px; text-transform: uppercase; }
+    .danger:hover { background: #ff6a6a22; }
+    .btns { display: flex; gap: 10px; margin-top: 20px; }
+    .btn { all: unset; cursor: pointer; padding: 10px 20px; border-radius: 6px; border: 1px solid var(--line); letter-spacing: 0.15em; text-transform: uppercase; font-weight: 600; }
+    .btn.go { background: rgba(79, 216, 255, 0.18); border-color: var(--accent); }
+    .btn:hover { background: rgba(79, 216, 255, 0.28); }
+
+    .credits p { margin: 0 0 10px; color: var(--muted); font-size: 15px; line-height: 1.45; }
+    .credits b { color: var(--text); font-weight: 600; }
+  </style>
+  <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/build/three.module.js",
+        "three/addons/": "./vendor/three/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="scene"></div>
+  <div id="vignette"></div>
+
+  <div id="ui">
+    <img id="logo" src="models/art/planets_game_logo_transparent.png" alt="Planets Game" />
+    <div id="tagline">One small astronaut · many small worlds</div>
+    <nav>
+      <button id="btnContinue" class="primary hidden"><span class="t">Continue</span><span class="s" id="continueSub"></span></button>
+      <button id="btnNew"><span class="t">New Game</span></button>
+      <button id="btnMissions"><span class="t">Missions</span></button>
+      <button id="btnSettings"><span class="t">Settings</span></button>
+      <button id="btnCredits"><span class="t">Credits</span></button>
+    </nav>
+    <div id="progress">
+      <div id="progressBar"></div>
+      <div id="progressText"></div>
+      <div id="hint">Tip: click the astronaut.</div>
+    </div>
+  </div>
+
+  <section class="panel" id="missionsPanel">
+    <button class="close" aria-label="Close">✕</button>
+    <h2>Missions</h2>
+    <div id="missionList"></div>
+  </section>
+
+  <section class="panel" id="settingsPanel">
+    <button class="close" aria-label="Close">✕</button>
+    <h2>Settings</h2>
+    <div class="row"><label for="sens">Mouse sensitivity</label><span><input id="sens" type="range" min="0.3" max="2" step="0.1" /> <span id="sensVal"></span></span></div>
+    <div class="row"><label for="invert">Invert mouse Y</label><input id="invert" type="checkbox" /></div>
+    <div class="row"><label>Graphics</label>
+      <div class="seg">
+        <label><input type="radio" name="quality" value="high" /><span>High</span></label>
+        <label><input type="radio" name="quality" value="low" /><span>Low</span></label>
+      </div>
+    </div>
+    <div class="note hidden" id="qualityNote">Graphics changes apply the next time a scene loads.</div>
+    <div class="note">Low turns off shadows and glow, for older computers.</div>
+    <button class="danger" id="resetProgress">Reset progress</button>
+  </section>
+
+  <section class="panel credits" id="creditsPanel">
+    <button class="close" aria-label="Close">✕</button>
+    <h2>Credits</h2>
+    <p><b>Game & level design</b>: made with Three.js</p>
+    <p><b>Models</b>: Quaternius (astronaut, aliens, spaceship, nature, buildings, ruins, weapons), Poly by Google (radio tower, palms, cacti, rocks), iPoly3D (crystals), Kay Lousberg &amp; Isa Lousberg (rocks, plants), Alan Zimmerman (alien plants), Dario Demi (eggs), Nick Slough (crate), Chris Lee &amp; Jarlan Perez (snowy trees), Kenney (rocks). Additional models: glowing mushrooms, totem, market building, power cell.</p>
+    <p><b>Engine</b>: three.js r160</p>
+  </section>
+
+  <section class="panel" id="confirmPanel">
+    <button class="close" aria-label="Close">✕</button>
+    <h2>New game?</h2>
+    <p style="color: var(--muted); font-size: 17px; margin: 0">This erases your progress: unlocked planets, best times and stats. Your settings are kept.</p>
+    <div class="btns">
+      <button class="btn go" id="confirmYes">Start over</button>
+      <button class="btn" id="confirmNo">Cancel</button>
+    </div>
+  </section>
+
+  <div id="fade"></div>
+  <script type="module" src="src/menu.js"></script>
+</body>
+</html>
